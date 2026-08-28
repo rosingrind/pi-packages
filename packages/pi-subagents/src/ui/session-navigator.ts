@@ -21,11 +21,11 @@ import {
   type MarkdownTheme,
   matchesKey,
   type TUI,
-  truncateToWidth,
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { Theme } from "#src/ui/display";
+import { sanitizeRow } from "#src/ui/row-sanitizer";
 import { fileSnapshotSource, listNavigableAgents, liveSource, type NavigableSubagent, type TranscriptSource } from "#src/ui/session-navigation";
 import { TranscriptContent } from "#src/ui/transcript-content";
 
@@ -192,7 +192,7 @@ export class TranscriptOverlay implements Component {
 
     const pad = (s: string, len: number): string => s + " ".repeat(Math.max(0, len - visibleWidth(s)));
     const row = (content: string): string =>
-      th.fg("border", "│") + " " + truncateToWidth(pad(content, innerW), innerW) + " " + th.fg("border", "│");
+      th.fg("border", "│") + " " + sanitizeRow(pad(content, innerW), innerW) + " " + th.fg("border", "│");
     const hrTop = th.fg("border", `╭${"─".repeat(width - 2)}╮`);
     const hrBot = th.fg("border", `╰${"─".repeat(width - 2)}╯`);
     const hrMid = row(th.fg("dim", "─".repeat(innerW)));

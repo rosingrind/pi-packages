@@ -259,6 +259,43 @@ describe("TranscriptContent", () => {
     });
   });
 
+  describe("row hygiene (drift regression)", () => {
+    // A row carrying a bare control character or an embedded newline desyncs
+    // the overlay's diff renderer from the terminal; every row the content
+    // produces must be paintable as-is at its width. SGR color sequences are
+    // the one legal escape — strip them before checking for bare controls.
+    function expectPaintableRows(content: TranscriptContent, width = WIDTH): void {
+      for (const row of allRows(content, width)) {
+        const bare = row.replace(/\x1b\[[0-9;:]*m/g, "");
+        expect(bare).not.toMatch(/[\n\r]/);
+        expect(bare).not.toMatch(/[\x00-\x08\x0b-\x1f\x7f]/);
+        expect(visibleWidth(row)).toBeLessThanOrEqual(width);
+      }
+    }
+
+    it("renders carriage-return progress output as paintable rows", () => {
+      const content = contentFrom([
+        {
+          role: "bashExecution",
+          command: "./build.sh",
+          output: "compiling 0%\rcompiling 50%\rcompiling 100%\ndone",
+          exitCode: 0,
+        },
+      ] as unknown as SessionMessage[]);
+      expectPaintableRows(content);
+    });
+
+    it("renders control-character-bearing error text as paintable rows", () => {
+      const content = contentFrom([
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "failed: bad\x07ping\u000bhere\x1b[2Aoverflow" }],
+        },
+      ] as unknown as SessionMessage[]);
+      expectPaintableRows(content);
+    });
+  });
+
   describe("width handling", () => {
     it("returns no rows at a non-positive width", () => {
       expect(makeContent().lineCount(0)).toBe(0);

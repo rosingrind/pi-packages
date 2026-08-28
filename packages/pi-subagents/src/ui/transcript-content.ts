@@ -21,10 +21,11 @@ import {
   ToolExecutionComponent,
   UserMessageComponent,
 } from "@earendil-works/pi-coding-agent";
-import { Container, type MarkdownTheme, Spacer, type TUI, truncateToWidth } from "@earendil-works/pi-tui";
+import { Container, type MarkdownTheme, Spacer, type TUI } from "@earendil-works/pi-tui";
 import type { AgentSessionEvent, SessionMessage } from "#src/types";
 import { describeActivity } from "#src/ui/display";
 import { GLYPHS } from "#src/ui/glyphs";
+import { sanitizeRow } from "#src/ui/row-sanitizer";
 import type { TranscriptSource } from "#src/ui/session-navigation";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -146,7 +147,7 @@ export class TranscriptContent {
     if (this.settledRows) return this.settledRows;
     const rows: string[] = [];
     for (const block of this.blocks) {
-      block.rows ??= block.container.render(width).map((row) => truncateToWidth(row, width));
+      block.rows ??= block.container.render(width).map((row) => sanitizeRow(row, width));
       rows.push(...block.rows);
     }
     this.settledRows = rows;
@@ -159,7 +160,7 @@ export class TranscriptContent {
     const streaming = this.options.source.streaming();
     if (streaming) {
       const activity = `${GLYPHS.streaming} ${describeActivity(streaming.activeTools, streaming.responseText)}`;
-      rows.push("", truncateToWidth(activity, width));
+      rows.push("", sanitizeRow(activity, width));
     }
     return rows;
   }
@@ -171,7 +172,7 @@ export class TranscriptContent {
       this.inFlightWidth = width;
       this.inFlightRows = undefined;
     }
-    this.inFlightRows ??= this.inFlight.render(width).map((row) => truncateToWidth(row, width));
+    this.inFlightRows ??= this.inFlight.render(width).map((row) => sanitizeRow(row, width));
     return this.inFlightRows;
   }
 

@@ -38,6 +38,20 @@ describe("TranscriptOverlay", () => {
     expect(lines.some((l) => l.includes("Hello world"))).toBe(true);
   });
 
+  it("paints rows free of control characters even when content carries them", () => {
+    const content: SessionMessage[] = [
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "boom\x07crash\r\noverflow\x1b[2Jreset" }],
+      },
+    ] as unknown as SessionMessage[];
+    const overlay = makeOverlay({ source: fakeSource({ getMessages: () => content }) });
+    for (const line of overlay.render(80)) {
+      const bare = line.replace(/\x1b\[[0-9;:]*m/g, "");
+      expect(bare).not.toMatch(/[\x00-\x08\x0b-\x1f\x7f]/);
+    }
+  });
+
   it("subscribes on construction and requests a render on change", () => {
     const tui = mockTui();
     let captured: (() => void) | undefined;
