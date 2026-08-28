@@ -7,7 +7,6 @@
 
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { AgentInvocation, SubagentType } from "#src/types";
-import { GLYPHS } from "#src/ui/glyphs";
 
 // ---- Types ----
 
@@ -69,12 +68,13 @@ export function formatTokens(count: number): string {
 /**
  * Token count with optional context-fill % and compaction-count annotations.
  * Thresholds for percent: <70% dim, 70–85% warning, ≥85% error.
- * Compaction count rendered as `⇊N` in dim (see `glyphs.ts`).
+ * Compaction count rendered as `+N compactions` — ASCII-only: the widget box
+ * breaks when a glyph's fallback font overruns its cell (#669 class).
  *
- *   "12.3k token"               — no annotations
- *   "12.3k token (45%)"         — percent only
- *   "12.3k token (⇊2)"          — compactions only (e.g. right after compact)
- *   "12.3k token (45% · ⇊2)"    — both
+ *   "12.3k token"                    — no annotations
+ *   "12.3k token (45%)"              — percent only
+ *   "12.3k token (+2 compactions)"   — compactions only (e.g. right after compact)
+ *   "12.3k token (45% · +2 compactions)" — both
  */
 export function formatSessionTokens(
   tokens: number,
@@ -89,18 +89,16 @@ export function formatSessionTokens(
     annot.push(theme.fg(color, `${Math.round(percent)}%`));
   }
   if (compactions > 0) {
-    annot.push(theme.fg("dim", `${GLYPHS.compactions}${compactions}`));
+    annot.push(theme.fg("dim", `+${compactions} compaction${compactions === 1 ? "" : "s"}`));
   }
   if (annot.length === 0) return tokenStr;
   const sep = theme.fg("dim", " · ");
   return `${tokenStr} ${theme.fg("dim", "(")}${annot.join(sep)}${theme.fg("dim", ")")}`;
 }
 
-/** Format turn count with optional max limit: "↻5≤30" or "↻5". */
+/** Format turn count with optional max limit: "2/40 turns" or "2 turns". ASCII-only — see `formatSessionTokens`. */
 export function formatTurns(turnCount: number, maxTurns?: number | null): string {
-  return maxTurns != null
-    ? `${GLYPHS.turns}${turnCount}≤${maxTurns}`
-    : `${GLYPHS.turns}${turnCount}`;
+  return maxTurns != null ? `${turnCount}/${maxTurns} turns` : `${turnCount} turns`;
 }
 
 /** Format milliseconds as human-readable duration. */

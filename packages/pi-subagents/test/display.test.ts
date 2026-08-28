@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentConfig } from "#src/types";
-import { formatSessionTokens, getDisplayName, getPromptModeLabel } from "#src/ui/display";
+import { formatSessionTokens, formatTurns, getDisplayName, getPromptModeLabel } from "#src/ui/display";
 
 const testRegistry = new AgentTypeRegistry(() => new Map());
 
@@ -78,12 +78,18 @@ describe("formatSessionTokens", () => {
 
   it("annotates compaction count alongside percent", () => {
     // compactions only (e.g. immediately post-compaction, percent null)
-    expect(formatSessionTokens(1234, null, theme, 1)).toBe("1.2k token <dim>(</dim><dim>⇊1</dim><dim>)</dim>");
-    expect(formatSessionTokens(1234, null, theme, 3)).toBe("1.2k token <dim>(</dim><dim>⇊3</dim><dim>)</dim>");
+    expect(formatSessionTokens(1234, null, theme, 1)).toBe("1.2k token <dim>(</dim><dim>+1 compaction</dim><dim>)</dim>");
+    expect(formatSessionTokens(1234, null, theme, 3)).toBe("1.2k token <dim>(</dim><dim>+3 compactions</dim><dim>)</dim>");
     // percent + compactions, joined with ` · `
-    expect(formatSessionTokens(1234, 45, theme, 2)).toBe("1.2k token <dim>(</dim><dim>45%</dim><dim> · </dim><dim>⇊2</dim><dim>)</dim>");
-    expect(formatSessionTokens(1234, 88, theme, 4)).toBe("1.2k token <dim>(</dim><error>88%</error><dim> · </dim><dim>⇊4</dim><dim>)</dim>");
+    expect(formatSessionTokens(1234, 45, theme, 2)).toBe("1.2k token <dim>(</dim><dim>45%</dim><dim> · </dim><dim>+2 compactions</dim><dim>)</dim>");
+    expect(formatSessionTokens(1234, 88, theme, 4)).toBe("1.2k token <dim>(</dim><error>88%</error><dim> · </dim><dim>+4 compactions</dim><dim>)</dim>");
     // compactions=0 omitted
     expect(formatSessionTokens(1234, 45, theme, 0)).toBe("1.2k token <dim>(</dim><dim>45%</dim><dim>)</dim>");
+  });
+
+  it("formats turn counts without fragile glyphs", () => {
+    expect(formatTurns(2, 40)).toBe("2/40 turns");
+    expect(formatTurns(5)).toBe("5 turns");
+    expect(formatTurns(0, null)).toBe("0 turns");
   });
 });

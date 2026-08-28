@@ -13,8 +13,6 @@
  *
  * Coverage on macOS 15, counted in families:
  *
- *   ↻ U+21BB turns          1  (Menlo)
- *   ⇊ U+21CA compactions    1  (Menlo)
  *   ✓ U+2713 success        6
  *   ✗ U+2717 failure        6
  *   ▸ U+25B8 tool call      6
@@ -26,6 +24,12 @@
  *   ◍ U+25CD streaming      1  (Menlo), tracked in #683
  *   ⠋…⠏ spinner frames      0  — pi house style, tracked in #683
  *
+ * Retired from the vocabulary: ↻ U+21BB and ⇊ U+21CA (1 monospace family
+ * each) and the unmeasured ≤ — a fallback-font advance overrun on glyphs in
+ * the widget's status row broke the chat box border on terminals whose font
+ * lacks coverage. Turn and compaction counts now render as ASCII
+ * ("2/40 turns", "+2 compactions") in `display.ts`.
+ *
  * Glyphs are written here as literal characters rather than `\uXXXX` escapes, so
  * a non-ASCII scan of `src/` (`rg -n '[^\x00-\x7f]' src --glob '*.ts'`) surfaces
  * this file plus only layout and punctuation. Box-drawing characters stay at
@@ -34,10 +38,6 @@
 
 /** Semantic indicator glyphs rendered in the widget, inline results, and notifications. */
 export const GLYPHS = {
-  /** Turn count, as `↻5≤30`. */
-  turns: "↻",
-  /** Session compaction count, annotating the token field. */
-  compactions: "⇊",
   /** Completed outcome, also used dim/warning for a wrapped-up agent. */
   success: "✓",
   /** Error or aborted outcome. */
