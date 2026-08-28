@@ -83,6 +83,9 @@ export class AgentWidget implements SubagentManagerObserver {
   /** Last status bar text, used to avoid redundant setStatus calls. */
   private lastStatusText: string | undefined;
 
+  /** True while the transcript overlay owns the chat area — update() holds off. */
+  private suspended = false;
+
   constructor(
     private manager: SubagentManager,
     private registry: AgentTypeRegistry,
@@ -258,7 +261,7 @@ export class AgentWidget implements SubagentManagerObserver {
 
   /** Force an immediate widget update. */
   update() {
-    if (!this.uiCtx) return;
+    if (this.suspended || !this.uiCtx) return;
 
     const backgroundAgents = this.listBackgroundAgents();
     this.seedFinishedAgents(backgroundAgents);
@@ -293,6 +296,31 @@ export class AgentWidget implements SubagentManagerObserver {
     }
   }
 
+  /**
+   * Temporarily unregister the widget so the transcript overlay can use the
+   * full chat area — the widget's height grows exactly when agents are
+   * running, which is exactly when the overlay is open. While suspended,
+   * `update()` holds off entirely (polls included), so the widget cannot
+   * re-register mid-overlay. The returned restore releases the hold and
+   * re-runs `update()`, which re-registers the widget only when there is
+   * something to show. Nested calls are safe: the outer suspend's
+   * registration state wins on restore.
+   */
+  suspendForOverlay(): () => void {
+    if (!this.uiCtx) return () => {};
+    const wasRegistered = this.widgetRegistered;
+    this.suspended = true;
+    if (this.widgetRegistered) {
+      this.uiCtx.setWidget("agents", undefined);
+      this.widgetRegistered = false;
+      this.tui = undefined;
+    }
+    return () => {
+      this.suspended = false;
+      if (wasRegistered) this.update();
+    };
+  }
+
   // fallow-ignore-next-line unused-class-member
   dispose() {
     if (this.widgetInterval) {
@@ -304,6 +332,7 @@ export class AgentWidget implements SubagentManagerObserver {
       this.uiCtx.setStatus("subagents", undefined);
     }
     this.widgetRegistered = false;
+    this.suspended = false;
     this.tui = undefined;
     this.lastStatusText = undefined;
   }

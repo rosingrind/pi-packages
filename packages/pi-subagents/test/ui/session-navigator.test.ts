@@ -32,6 +32,66 @@ function makeOverlay(opts: { source?: TranscriptSource; done?: (r: undefined) =>
   });
 }
 
+function makeUI(selectResult?: string) {
+  return {
+    select: vi.fn().mockResolvedValue(selectResult),
+    notify: vi.fn(),
+    custom: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+const noReadFile = (): string => {
+  throw new Error("readFile not expected in this test");
+};
+
+describe("full-size overlay geometry", () => {
+  it("requests the full chat area: anchored top-left with margins, width and height 100%", async () => {
+    const ui = makeUI("Agent (Test task) · 2 tools · completed · 3.0s");
+    await new SessionNavigatorHandler().handle({ ui, agents: [makeNavigable()], registry, cwd: "/test/cwd", readFile: noReadFile });
+    const options = ui.custom.mock.calls[0][1] as { overlayOptions: Record<string, unknown> };
+    expect(options.overlayOptions).toMatchObject({
+      anchor: "top-left",
+      width: "100%",
+      maxHeight: "100%",
+      margin: { top: 2, left: 3, right: 3, bottom: 6 },
+    });
+  });
+
+  it("fills the compositor's available height with the transcript viewport", () => {
+    // 40 rows - top 2 - bottom 6 = 32 available; the overlay paints all of it.
+    const overlay = makeOverlay({ tui: mockTui(40, 80) });
+    expect(overlay.render(74)).toHaveLength(32);
+  });
+
+  it("keeps a minimum viewport on tiny terminals", () => {
+    const overlay = makeOverlay({ tui: mockTui(10, 40) });
+    expect(overlay.render(34).length).toBeGreaterThanOrEqual(9);
+  });
+});
+
+describe("agent widget suspend", () => {
+  it("suspends the widget before the overlay opens and restores it after it closes", async () => {
+    const ui = makeUI("Agent (Test task) · 2 tools · completed · 3.0s");
+    const restore = vi.fn();
+    const suspend = vi.fn(() => restore);
+    await new SessionNavigatorHandler().handle({ ui, agents: [makeNavigable()], registry, cwd: "/test/cwd", readFile: noReadFile, suspendAgentWidget: suspend });
+    expect(suspend).toHaveBeenCalledOnce();
+    expect(restore).toHaveBeenCalledOnce();
+    expect(restore.mock.invocationCallOrder[0]).toBeGreaterThan(suspend.mock.invocationCallOrder[0]);
+    expect(restore.mock.invocationCallOrder[0]).toBeGreaterThan(ui.custom.mock.invocationCallOrder[0]);
+  });
+
+  it("restores the widget when the overlay throws", async () => {
+    const ui = makeUI("Agent (Test task) · 2 tools · completed · 3.0s");
+    ui.custom.mockRejectedValueOnce(new Error("overlay boom"));
+    const restore = vi.fn();
+    await expect(
+      new SessionNavigatorHandler().handle({ ui, agents: [makeNavigable()], registry, cwd: "/test/cwd", readFile: noReadFile, suspendAgentWidget: vi.fn(() => restore) }),
+    ).rejects.toThrow("overlay boom");
+    expect(restore).toHaveBeenCalledOnce();
+  });
+});
+
 describe("TranscriptOverlay", () => {
   it("renders the transcript content", () => {
     const lines = makeOverlay().render(80);
@@ -156,14 +216,6 @@ describe("TranscriptOverlay", () => {
 });
 
 describe("SessionNavigatorHandler", () => {
-  function makeUI(selectResult?: string) {
-    return {
-      select: vi.fn().mockResolvedValue(selectResult),
-      notify: vi.fn(),
-      custom: vi.fn().mockResolvedValue(undefined),
-    };
-  }
-
   // Invoke the component factory captured by the handler's ui.custom call and
   // render it — the act (handle) stays explicit in each test.
   function renderCapturedOverlay(ui: ReturnType<typeof makeUI>, width = 80): string[] {
@@ -176,10 +228,6 @@ describe("SessionNavigatorHandler", () => {
     const overlay = factory(mockTui(), ansiTheme(), undefined, vi.fn());
     return overlay.render(width);
   }
-
-  const noReadFile = (): string => {
-    throw new Error("readFile not expected in this test");
-  };
 
   it("notifies and skips the overlay when no sessions are navigable", async () => {
     const ui = makeUI();

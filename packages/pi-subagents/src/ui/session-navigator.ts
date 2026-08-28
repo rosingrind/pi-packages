@@ -33,10 +33,15 @@ import { TranscriptContent } from "#src/ui/transcript-content";
 
 /** Chrome lines: top border + header + header sep + footer sep + footer + bottom border. */
 const CHROME_LINES = 6;
+/** Floor for the transcript viewport so tiny terminals still show content. */
 const MIN_VIEWPORT = 3;
-const VIEWPORT_HEIGHT_PCT = 70;
-/** Overlay width as a share of the terminal, as handed to Pi's overlay compositor. */
-const OVERLAY_WIDTH_PCT = 90;
+/**
+ * Overlay margins clearing pi's own chrome: the header above, and the status
+ * line, editor, widget trays, and footer below. Deliberately small (2-3
+ * cells) so the overlay fills the chat area; foreign trays that grow beyond
+ * the bottom budget can still overlap cosmetically — a documented residual.
+ */
+const OVERLAY_MARGIN = { top: 2, right: 3, bottom: 6, left: 3 } as const;
 
 /** Component factory shape Pi's `ui.custom` invokes to mount an overlay. */
 export type OverlayComponentFactory<R> = (
@@ -62,6 +67,12 @@ export interface SessionNavigatorParams {
   cwd: string;
   /** Reads a persisted session file for the file-snapshot source. */
   readFile: (path: string) => string;
+  /**
+   * Temporarily unregister the agent widget while the overlay is open (its
+   * height grows exactly when agents run — exactly when the overlay shows).
+   * Returns the restore function; invoked even when the overlay throws.
+   */
+  suspendAgentWidget?: () => () => void;
 }
 
 /** Options for the read-only transcript overlay. */
@@ -82,40 +93,47 @@ export interface TranscriptOverlayOptions {
  * manager, so it stays a reactive consumer with no inbound call into the core.
  */
 export class SessionNavigatorHandler {
-  async handle({ ui, agents, registry, cwd, readFile }: SessionNavigatorParams): Promise<void> {
+  async handle({ ui, agents, registry, cwd, readFile, suspendAgentWidget }: SessionNavigatorParams): Promise<void> {
     const entries = listNavigableAgents(agents, registry);
     if (entries.length === 0) {
       ui.notify("No subagent sessions to view.", "info");
       return;
     }
 
-    const choice = await ui.select(
-      "Subagent sessions",
-      entries.map((entry) => entry.label),
-    );
-    const entry = entries.find((candidate) => candidate.label === choice);
-    if (!entry) return;
-
-    let source: TranscriptSource;
+    const restoreWidget = suspendAgentWidget?.();
     try {
-      source = entry.kind === "live" ? liveSource(entry.record) : fileSnapshotSource(entry.outputFile, readFile);
-    } catch {
-      ui.notify("Could not read the session transcript file.", "error");
-      return;
-    }
-    const markdownTheme = getMarkdownTheme();
-    await ui.custom<undefined>(
-      (tui, theme, _keybindings, done) =>
-        new TranscriptOverlay({ tui, theme, source, done, cwd, markdownTheme }),
-      {
-        overlay: true,
-        overlayOptions: {
-          anchor: "center",
-          width: `${OVERLAY_WIDTH_PCT}%`,
-          maxHeight: `${VIEWPORT_HEIGHT_PCT}%`,
+      const choice = await ui.select(
+        "Subagent sessions",
+        entries.map((entry) => entry.label),
+      );
+      const entry = entries.find((candidate) => candidate.label === choice);
+      if (!entry) return;
+
+      let source: TranscriptSource;
+
+      try {
+        source = entry.kind === "live" ? liveSource(entry.record) : fileSnapshotSource(entry.outputFile, readFile);
+      } catch {
+        ui.notify("Could not read the session transcript file.", "error");
+        return;
+      }
+      const markdownTheme = getMarkdownTheme();
+      await ui.custom<undefined>(
+        (tui, theme, _keybindings, done) =>
+          new TranscriptOverlay({ tui, theme, source, done, cwd, markdownTheme }),
+        {
+          overlay: true,
+          overlayOptions: {
+            anchor: "top-left",
+            width: "100%",
+            maxHeight: "100%",
+            margin: { ...OVERLAY_MARGIN },
+          },
         },
-      },
-    );
+      );
+    } finally {
+      restoreWidget?.();
+    }
   }
 }
 
@@ -241,17 +259,20 @@ export class TranscriptOverlay implements Component {
   /**
    * The width `handleInput` must lay out at: the one the compositor actually
    * supplied, so scroll bounds match the layout on screen. Before the first
-   * paint there is none, so fall back to the overlay's share of the terminal.
+   * paint there is none, so fall back to the terminal minus the overlay's
+   * side margins.
    */
   private inputWidth(): number {
     return (
       this.renderedInnerWidth ??
-      Math.max(0, Math.floor((this.tui.terminal.columns * OVERLAY_WIDTH_PCT) / 100) - 4)
+      Math.max(0, this.tui.terminal.columns - OVERLAY_MARGIN.left - OVERLAY_MARGIN.right - 4)
     );
   }
 
   private viewportHeight(): number {
-    const maxRows = Math.floor((this.tui.terminal.rows * VIEWPORT_HEIGHT_PCT) / 100);
-    return Math.max(MIN_VIEWPORT, maxRows - CHROME_LINES);
+    // Fill the compositor's available height exactly: terminal rows minus the
+    // overlay's top/bottom margins and our own chrome.
+    const available = this.tui.terminal.rows - OVERLAY_MARGIN.top - OVERLAY_MARGIN.bottom - CHROME_LINES;
+    return Math.max(MIN_VIEWPORT, available);
   }
 }

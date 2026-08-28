@@ -211,6 +211,7 @@ export default function (pi: ExtensionAPI) {
         registry,
         cwd: ctx.cwd,
         readFile: (path) => readFileSync(path, "utf8"),
+        suspendAgentWidget: () => widget.suspendForOverlay(),
       });
     },
   });

@@ -328,6 +328,51 @@ describe("AgentWidget — self-drives from lifecycle notifications", () => {
 	});
 });
 
+describe("AgentWidget.suspendForOverlay", () => {
+	it("unregisters the widget and returns a restore that re-registers it", () => {
+		const { widget, lastContent } = makeWidget([
+			{ id: "agent-1", status: "running", completedAt: undefined },
+		]);
+		widget.update();
+		expect(typeof lastContent()).toBe("function");
+
+		const restore = widget.suspendForOverlay();
+		expect(lastContent()).toBeUndefined();
+
+		restore();
+		expect(typeof lastContent()).toBe("function");
+	});
+
+	it("restore leaves the widget unregistered when nothing is active", () => {
+		const { widget, lastContent } = makeWidget([]);
+		widget.update();
+		const restore = widget.suspendForOverlay();
+		restore();
+		expect(lastContent()).toBeUndefined();
+	});
+
+	it("is a no-op when the widget was never registered", () => {
+		const { widget, lastContent } = makeWidget([
+			{ id: "agent-1", status: "running", completedAt: undefined },
+		]);
+		const restore = widget.suspendForOverlay();
+		restore();
+		expect(lastContent()).toBeUndefined();
+	});
+
+	it("is safe to call repeatedly, nested", () => {
+		const { widget, lastContent } = makeWidget([
+			{ id: "agent-1", status: "running", completedAt: undefined },
+		]);
+		widget.update();
+		const restoreOuter = widget.suspendForOverlay();
+		const restoreInner = widget.suspendForOverlay();
+		restoreInner();
+		restoreOuter();
+		expect(typeof lastContent()).toBe("function");
+	});
+});
+
 describe("AgentWidget — background-only filtering", () => {
 	function setup(records: Subagent[]) {
 		const manager = { listAgents: () => records } as unknown as SubagentManager;
