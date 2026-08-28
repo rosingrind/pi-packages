@@ -245,6 +245,35 @@ describe("renderFailed", () => {
 			"[warning:  \u23BF  Aborted (max turns exceeded)]",
 		);
 	});
+
+	it("collapses a multiline error to its first line plus a count hint", () => {
+		const details = makeDetails({
+			status: "error",
+			error: 'Model not found: "nonexistent-model-xyz".\n\nAvailable models:\n  seas/glm-5.3-flash\n  google/gemini-3.5-flash',
+		});
+		const out = renderFailed(details, theme, false);
+		expect(out).toContain('[error:  \u23BF  Error: Model not found: "nonexistent-model-xyz".]');
+		expect(out).toContain("[dim:  \u23BF  \u2026 4 more lines — expand for the full output]");
+		expect(out).not.toContain("Available models");
+	});
+
+	it("shows the full multiline error when expanded", () => {
+		const details = makeDetails({
+			status: "error",
+			error: 'Model not found.\n\nAvailable models:\n  seas/glm-5.3-flash',
+		});
+		const out = renderFailed(details, theme, true);
+		expect(out).toContain("Available models");
+		expect(out).toContain("seas/glm-5.3-flash");
+		expect(out).not.toContain("more lines");
+	});
+
+	it("adds no count hint for a single-line collapsed error", () => {
+		const details = makeDetails({ status: "error", error: "boom" });
+		const out = renderFailed(details, theme, false);
+		expect(out).toContain("[error:  \u23BF  Error: boom]");
+		expect(out).not.toContain("more line");
+	});
 });
 
 describe("renderAgentResult", () => {

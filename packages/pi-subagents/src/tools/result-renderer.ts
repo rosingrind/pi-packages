@@ -25,7 +25,7 @@ export function renderAgentResult(
 	if (details.status === "completed" || details.status === "steered")
 		return renderCompleted(details, resultText, expanded, theme);
 	if (details.status === "stopped") return renderStopped(details, theme);
-	return renderFailed(details, theme);
+	return renderFailed(details, theme, expanded);
 }
 
 // ---- Per-status renderers ----
@@ -90,15 +90,32 @@ export function renderStopped(details: AgentDetails, theme: Theme): string {
 	return line;
 }
 
-/** Render error or aborted status: error icon + stats + status message. */
-export function renderFailed(details: AgentDetails, theme: Theme): string {
+/**
+ * Render error or aborted status: error icon + stats + status message.
+ * Multiline errors (e.g. the model-not-found list) collapse to their first
+ * line plus a count hint unless expanded, matching renderCompleted's
+ * respect for pi's collapsed tool-output state.
+ */
+export function renderFailed(details: AgentDetails, theme: Theme, expanded = true): string {
 	const s = renderStats(details, theme);
 	let line = theme.fg("error", GLYPHS.failure) + (s ? " " + s : "");
 
 	if (details.status === "error") {
-		line +=
-			"\n" +
-			theme.fg("error", `  ${GLYPHS.subLine}  Error: ${details.error ?? "unknown"}`);
+		const error = details.error ?? "unknown";
+		const lines = error.split("\n");
+		if (!expanded && lines.length > 1) {
+			const remaining = lines.length - 1;
+			line +=
+				"\n" +
+				theme.fg("error", `  ${GLYPHS.subLine}  Error: ${lines[0]}`) +
+				"\n" +
+				theme.fg(
+					"dim",
+					`  ${GLYPHS.subLine}  \u2026 ${remaining} more line${remaining === 1 ? "" : "s"} — expand for the full output`,
+				);
+		} else {
+			line += "\n" + theme.fg("error", `  ${GLYPHS.subLine}  Error: ${error}`);
+		}
 	} else {
 		line +=
 			"\n" +
