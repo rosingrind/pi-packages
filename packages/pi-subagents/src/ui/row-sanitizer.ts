@@ -35,7 +35,7 @@ export function sanitizeRow(row: string, width: number): string {
   const segments: string[] = [];
   let last = 0;
   for (const match of row.matchAll(SGR_SEQUENCE)) {
-    const start = match.index ?? 0;
+    const start = match.index;
     segments.push(cleanText(row.slice(last, start)), match[0]);
     last = start + match[0].length;
   }
