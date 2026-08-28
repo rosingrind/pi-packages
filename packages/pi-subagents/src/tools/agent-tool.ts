@@ -166,7 +166,7 @@ export class AgentTool {
 						"- Use steer_subagent to send mid-run messages to a running background agent.",
 					]),
 			"- Use resume with an agent ID to continue a previous agent's work.",
-			'- Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").',
+			'- Use model with a known "provider/modelId" or a fuzzy alias ("haiku", "sonnet"); an unknown name fails immediately with the complete list of available models — never invent IDs.',
 			"- Use thinking to control extended thinking level.",
 			"- Use inherit_context if the agent needs the parent conversation history.",
 		].join("\n");

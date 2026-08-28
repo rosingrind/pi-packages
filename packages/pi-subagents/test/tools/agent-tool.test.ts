@@ -63,6 +63,14 @@ describe("AgentTool", () => {
 		expect(positions).toEqual([...positions].sort((a, b) => a - b));
 	});
 
+	it("teaches model discovery through resolution failure, not an inline list", () => {
+		const def = makeTool(createToolDeps()).toToolDefinition();
+		expect(def.description).toContain(
+			'- Use model with a known "provider/modelId" or a fuzzy alias ("haiku", "sonnet"); an unknown name fails immediately with the complete list of available models — never invent IDs.',
+		);
+		expect(def.description).not.toContain("Available models");
+	});
+
 	it.for(["Explore", "Plan", "general-purpose"])(
 		"omits the type-list entry and guideline for a disabled built-in %s",
 		(name) => {
