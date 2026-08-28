@@ -8,7 +8,7 @@ import type { AgentSpawnConfig } from "#src/lifecycle/subagent-manager";
 import { spawnBackground } from "#src/tools/background-spawner";
 import { runForeground } from "#src/tools/foreground-runner";
 import { buildAgentGuidelines, buildDetails, buildTypeListText, textResult } from "#src/tools/helpers";
-import { renderAgentResult } from "#src/tools/result-renderer";
+import { collapseToolErrorText, renderAgentResult } from "#src/tools/result-renderer";
 import { type ModelInfo, resolveSpawnConfig } from "#src/tools/spawn-config";
 import type { ParentSessionInfo, Subagent } from "#src/types";
 import { type AgentDetails, getDisplayName, type Theme } from "#src/ui/display";
@@ -257,7 +257,7 @@ ${guidelines}
 				const details = result.details;
 				if (!details) {
 					const text = result.content[0]?.type === "text" ? result.content[0].text : "";
-					return new Text(text, 0, 0);
+					return new Text(collapseToolErrorText(text, theme, expanded), 0, 0);
 				}
 				const resultText = result.content[0]?.type === "text" ? result.content[0].text : "";
 				return new Text(

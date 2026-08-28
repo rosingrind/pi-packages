@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	collapseToolErrorText,
 	renderAgentResult,
 	renderBackground,
 	renderCompleted,
@@ -321,5 +322,31 @@ describe("renderAgentResult", () => {
 		expect(renderAgentResult(details, "", false, false, theme)).toContain(
 			"[warning:  \u23BF  Aborted (max turns exceeded)]",
 		);
+	});
+});
+
+describe("collapseToolErrorText", () => {
+	const theme = makeTheme();
+	const multiline =
+		'Model not found: "haiku".\n\nAvailable models:\n  seas/glm-5.3-flash\n  google/gemini-3.5-flash\n  groq/llama-3.1-8b-instant';
+
+	it("shows only the first line and a count hint when collapsed", () => {
+		const out = collapseToolErrorText(multiline, theme, false);
+		expect(out).toContain('Error: Model not found: "haiku".');
+		expect(out).toContain("5 more lines — expand for the full output");
+		expect(out).not.toContain("seas/glm-5.3-flash");
+	});
+
+	it("shows the full text when expanded", () => {
+		const out = collapseToolErrorText(multiline, theme, true);
+		expect(out).toContain("Available models:");
+		expect(out).toContain("groq/llama-3.1-8b-instant");
+	});
+
+	it("renders single-line errors identically in both states", () => {
+		const collapsed = collapseToolErrorText("boom", theme, false);
+		const expanded = collapseToolErrorText("boom", theme, true);
+		expect(collapsed).toBe(expanded);
+		expect(collapsed).toContain("Error: boom");
 	});
 });

@@ -96,26 +96,35 @@ export function renderStopped(details: AgentDetails, theme: Theme): string {
  * line plus a count hint unless expanded, matching renderCompleted's
  * respect for pi's collapsed tool-output state.
  */
+/**
+ * Format a raw error string for tool-result display. When collapsed, multiline
+ * errors render as the first line plus a count hint; single-line errors and
+ * expanded views show the full text. Shared by renderFailed (agent-run errors)
+ * and the details-less tool-result path in agent-tool (pre-spawn failures).
+ */
+export function collapseToolErrorText(text: string, theme: Theme, expanded = true): string {
+	const lines = text.split("\n");
+	if (!expanded && lines.length > 1) {
+		const remaining = lines.length - 1;
+		return (
+			theme.fg("error", `  ${GLYPHS.subLine}  Error: ${lines[0]}`) +
+			"\n" +
+			theme.fg(
+				"dim",
+				`  ${GLYPHS.subLine}  \u2026 ${remaining} more line${remaining === 1 ? "" : "s"} — expand for the full output`,
+			)
+		);
+	}
+	return theme.fg("error", `  ${GLYPHS.subLine}  Error: ${text}`);
+}
+
 export function renderFailed(details: AgentDetails, theme: Theme, expanded = true): string {
 	const s = renderStats(details, theme);
 	let line = theme.fg("error", GLYPHS.failure) + (s ? " " + s : "");
 
 	if (details.status === "error") {
 		const error = details.error ?? "unknown";
-		const lines = error.split("\n");
-		if (!expanded && lines.length > 1) {
-			const remaining = lines.length - 1;
-			line +=
-				"\n" +
-				theme.fg("error", `  ${GLYPHS.subLine}  Error: ${lines[0]}`) +
-				"\n" +
-				theme.fg(
-					"dim",
-					`  ${GLYPHS.subLine}  \u2026 ${remaining} more line${remaining === 1 ? "" : "s"} — expand for the full output`,
-				);
-		} else {
-			line += "\n" + theme.fg("error", `  ${GLYPHS.subLine}  Error: ${error}`);
-		}
+		line += "\n" + collapseToolErrorText(error, theme, expanded);
 	} else {
 		line +=
 			"\n" +
