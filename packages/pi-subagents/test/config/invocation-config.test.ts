@@ -16,7 +16,7 @@ function makeConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
 }
 
 describe("resolveAgentInvocationConfig", () => {
-  it("prefers agent config over tool-call params for locked fields", () => {
+  it("lets tool-call params override agent-config invocation fields", () => {
     const resolved = resolveAgentInvocationConfig(
       makeConfig({
         model: "provider/config-model",
@@ -34,12 +34,26 @@ describe("resolveAgentInvocationConfig", () => {
       },
     );
 
+    expect(resolved.modelInput).toBe("provider/param-model");
+    expect(resolved.modelFromParams).toBe(true);
+    expect(resolved.thinking).toBe("minimal");
+    expect(resolved.maxTurns).toBe(1);
+    expect(resolved.inheritContext).toBe(true);
+    expect(resolved.runInBackground).toBe(true);
+  });
+
+  it("treats a config-pinned model as an explicit request that must resolve", () => {
+    const resolved = resolveAgentInvocationConfig(makeConfig({ model: "provider/config-model" }), {});
+
     expect(resolved.modelInput).toBe("provider/config-model");
+    expect(resolved.modelFromParams).toBe(true);
+  });
+
+  it("does not treat an inherited parent model as an explicit request", () => {
+    const resolved = resolveAgentInvocationConfig(makeConfig(), {});
+
+    expect(resolved.modelInput).toBeUndefined();
     expect(resolved.modelFromParams).toBe(false);
-    expect(resolved.thinking).toBe("high");
-    expect(resolved.maxTurns).toBe(42);
-    expect(resolved.inheritContext).toBe(false);
-    expect(resolved.runInBackground).toBe(false);
   });
 
   it("uses tool-call params when no agent config is available", () => {

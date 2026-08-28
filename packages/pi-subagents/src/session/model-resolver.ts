@@ -33,6 +33,11 @@ export type ModelResolution = ModelResolutionResult | ModelResolutionError;
  * 3. `modelInput` fails:
  *    - `modelFromParams` true  → return `{ error }` so the caller can surface it.
  *    - `modelFromParams` false → silent fallback to `parentModel`.
+ *
+ * `modelFromParams` is produced by `resolveAgentInvocationConfig` and means
+ * "an explicit model was requested" — by tool-call params (which override the
+ * config pin) or by the config pin itself. Only the inherited parent model is
+ * a silent default; an explicit request that fails to resolve surfaces.
  */
 export function resolveInvocationModel(
   parentModel: Model<any> | undefined,
