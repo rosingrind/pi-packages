@@ -112,9 +112,9 @@ describe("settings persistence", () => {
   });
 
   describe("sanitizer", () => {
-    it("drops maxConcurrent < 1", () => {
+    it("accepts maxConcurrent: 0 (serialized foreground-only mode)", () => {
       writeProject({ maxConcurrent: 0, graceTurns: 5 });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ graceTurns: 5 });
+      expect(loadSettings(globalDir, projectDir)).toEqual({ maxConcurrent: 0, graceTurns: 5 });
     });
 
     it("drops negative maxConcurrent", () => {
@@ -422,16 +422,16 @@ describe("SettingsManager", () => {
       expect(sm.maxConcurrent).toBe(8);
     });
 
-    it("clamps 0 to 1", () => {
+    it("stores 0 — serialized foreground-only mode", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
       sm.maxConcurrent = 0;
-      expect(sm.maxConcurrent).toBe(1);
+      expect(sm.maxConcurrent).toBe(0);
     });
 
-    it("clamps negative values to 1", () => {
+    it("clamps negative values to 0", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
       sm.maxConcurrent = -2;
-      expect(sm.maxConcurrent).toBe(1);
+      expect(sm.maxConcurrent).toBe(0);
     });
   });
 
@@ -694,11 +694,13 @@ describe("SettingsManager", () => {
       expect(written.maxConcurrent).toBe(8);
     });
 
-    it("normalizes 0 to 1 and reports the post-normalization value in the toast", () => {
+    it("stores 0 and names the serialized foreground-only mode in the toast", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent" });
       const toast = sm.applyMaxConcurrent(0);
-      expect(sm.maxConcurrent).toBe(1);
-      expect(toast.message).toBe("Max concurrency set to 1");
+      expect(sm.maxConcurrent).toBe(0);
+      expect(toast.message).toBe(
+        "Max concurrency set to 0 (serialized foreground-only mode: background agents disabled)",
+      );
     });
 
     it("works without a callback — no throw, still persists and returns toast", () => {

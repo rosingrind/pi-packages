@@ -6,6 +6,11 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { type LayeredSettingsSource, loadLayeredSettings } from "#src/layered-settings";
 export interface SubagentsSettings {
+  /**
+   * Background concurrency cap. 0 is serialized foreground-only mode: no
+   * background agents may spawn at all (the subagent tool rejects
+   * `run_in_background` and the RPC service rejects every spawn).
+   */
   maxConcurrent?: number;
   /**
    * 0 = unlimited — the extension's single source of truth for that convention:
@@ -111,14 +116,14 @@ export class SettingsManager {
     this._graceTurns = Math.max(1, n);
   }
 
-  // ── maxConcurrent: minimum 1 ──
+  // ── maxConcurrent: minimum 0 — 0 is serialized foreground-only mode ──
 
   get maxConcurrent(): number {
     return this._maxConcurrent;
   }
 
   set maxConcurrent(n: number) {
-    this._maxConcurrent = Math.max(1, n);
+    this._maxConcurrent = Math.max(0, n);
   }
 
   // ── retention windows: clamped to [1, RETENTION_MINUTES_CEILING] minutes ──
@@ -197,11 +202,16 @@ export class SettingsManager {
   /**
    * Set maxConcurrent, notify interested parties, persist, and return the toast.
    * Owns the full consequence chain so callers just say what they want.
+   * 0 is valid: serialized foreground-only mode (background agents disabled).
    */
   applyMaxConcurrent(n: number): { message: string; level: "info" | "warning" } {
-    this.maxConcurrent = n; // setter normalizes: max(1, n)
+    this.maxConcurrent = n; // setter normalizes: max(0, n)
     this.onMaxConcurrentChanged?.();
-    return this.saveAndNotify(`Max concurrency set to ${this.maxConcurrent}`);
+    const label =
+      this.maxConcurrent === 0
+        ? "Max concurrency set to 0 (serialized foreground-only mode: background agents disabled)"
+        : `Max concurrency set to ${this.maxConcurrent}`;
+    return this.saveAndNotify(label);
   }
 
   /**
@@ -283,7 +293,7 @@ function sanitize(raw: unknown): SubagentsSettings {
   const out: SubagentsSettings = {};
   if (
     Number.isInteger(r.maxConcurrent) &&
-    (r.maxConcurrent as number) >= 1 &&
+    (r.maxConcurrent as number) >= 0 &&
     (r.maxConcurrent as number) <= MAX_CONCURRENT_CEILING
   ) {
     out.maxConcurrent = r.maxConcurrent as number;

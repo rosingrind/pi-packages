@@ -32,15 +32,31 @@ export interface ServiceRuntimeLike {
   buildSnapshot(inheritContext: boolean): ParentSnapshot;
 }
 
+/** Rejection text for any service spawn while maxConcurrent is 0. */
+const SERIALIZED_MODE_ERROR =
+  "Spawning subagents is unavailable: maxConcurrent is 0 (serialized foreground-only mode — " +
+  "only one request stream may be in flight, and this service returns immediately, so it cannot " +
+  "serialize an agent against the main session). Raise maxConcurrent to at least 1, or run the " +
+  "work through the session's own subagent tool.";
+
 /** Adapter that wraps SubagentManager to satisfy SubagentsService. */
 export class SubagentsServiceAdapter implements SubagentsService {
   constructor(
     private readonly manager: SubagentManagerLike,
     private readonly resolveModel: (input: string, registry: ModelRegistry) => Model<any> | string,
     private readonly runtime: ServiceRuntimeLike,
+    /** Live maxConcurrent getter — reads the current setting at spawn time. */
+    private readonly getMaxConcurrent: () => number,
   ) {}
 
   spawn(type: string, prompt: string, options?: SpawnOptions): string {
+    // Serialized foreground-only mode: the service contract returns immediately,
+    // so no service spawn — queued, queue-jumping, or foreground — can be kept
+    // from overlapping the main session's request stream. Reject all of them.
+    if (this.getMaxConcurrent() === 0) {
+      throw new Error(SERIALIZED_MODE_ERROR);
+    }
+
     if (!this.runtime.currentCtx) {
       throw new Error("No active session — cannot spawn agents outside a session.");
     }

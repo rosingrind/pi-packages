@@ -178,6 +178,7 @@ describe("SubagentsServiceAdapter — getRecord and listAgents", () => {
       manager,
       () => makeModel({ id: "test" }),
       makeRuntimeStub(),
+      () => 4,
     );
   }
 
@@ -213,6 +214,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
       createManagerStub(),
       vi.fn(),
       makeRuntimeStub({ currentCtx: undefined }),
+      () => 4,
     );
     expect(() => svc.spawn("Explore", "do something")).toThrow(
       /no active session/i,
@@ -226,6 +228,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
       createManagerStub(),
       resolveModel,
       makeRuntimeStub({ currentCtx: { ...makeStubCtx(), modelRegistry: registry } }),
+      () => 4,
     );
     svc.spawn("Explore", "check TODOs", { model: "haiku" });
     expect(resolveModel).toHaveBeenCalledWith("haiku", registry);
@@ -236,6 +239,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
       createManagerStub(),
       () => 'Model not found: "bad-model".\n\nAvailable models:\n  anthropic/claude-sonnet',
       makeRuntimeStub(),
+      () => 4,
     );
     expect(() => svc.spawn("Explore", "task", { model: "bad-model" })).toThrow(
       /Model not found/,
@@ -249,6 +253,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
       mgr,
       () => resolvedModel,
       makeRuntimeStub(),
+      () => 4,
     );
     const id = svc.spawn("Explore", "check TODOs", { model: "sonnet", maxTurns: 5 });
     expect(id).toBe("spawned-id");
@@ -270,6 +275,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
       mgr,
       vi.fn(),
       makeRuntimeStub(),
+      () => 4,
     );
     svc.spawn("Plan", "plan work", { foreground: true });
     expect(mgr.spawn).toHaveBeenCalledWith(
@@ -282,7 +288,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
 
   it("uses truncated prompt as default description", () => {
     const mgr = createManagerStub();
-    const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub());
+    const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub(), () => 4);
     const longPrompt = "x".repeat(200);
     svc.spawn("Explore", longPrompt);
     expect(mgr.spawn).toHaveBeenCalledWith(
@@ -295,7 +301,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
 
   it("uses provided description over default", () => {
     const mgr = createManagerStub();
-    const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub());
+    const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub(), () => 4);
     svc.spawn("Explore", "long prompt here", { description: "short desc" });
     expect(mgr.spawn).toHaveBeenCalledWith(
       expect.anything(), // snapshot
@@ -307,7 +313,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
 
   it("does not call resolveModel when no model option is provided", () => {
     const resolveModel = vi.fn();
-    const svc = new SubagentsServiceAdapter(createManagerStub(), resolveModel, makeRuntimeStub());
+    const svc = new SubagentsServiceAdapter(createManagerStub(), resolveModel, makeRuntimeStub(), () => 4);
     svc.spawn("Explore", "quick check");
     expect(resolveModel).not.toHaveBeenCalled();
   });
@@ -315,7 +321,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
 
 describe("SubagentsServiceAdapter — steer, abort, waitForAll, hasRunning", () => {
   function createSvc(mgr: ReturnType<typeof createManagerStub>) {
-    return new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub());
+    return new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub(), () => 4);
   }
 
   describe("abort", () => {
@@ -396,12 +402,35 @@ describe("SubagentsServiceAdapter — registerWorkspaceProvider", () => {
     const disposer = vi.fn();
     const mgr = createManagerStub();
     mgr.registerWorkspaceProvider.mockReturnValue(disposer);
-    const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub());
+    const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub(), () => 4);
     const provider: WorkspaceProvider = { prepare: vi.fn(async () => undefined) };
 
     const result = svc.registerWorkspaceProvider(provider);
 
     expect(mgr.registerWorkspaceProvider).toHaveBeenCalledWith(provider);
     expect(result).toBe(disposer);
+  });
+});
+
+describe("SubagentsServiceAdapter — serialized mode (maxConcurrent = 0)", () => {
+  it("rejects every spawn with an explanation naming the mode and the constraint", () => {
+    const svc = new SubagentsServiceAdapter(createManagerStub(), vi.fn(), makeRuntimeStub(), () => 0);
+    expect(() => svc.spawn("Explore", "task")).toThrow(/maxConcurrent is 0/);
+    expect(() => svc.spawn("Explore", "task", { bypassQueue: true })).toThrow(/serialized/);
+    expect(() => svc.spawn("Explore", "task", { foreground: true })).toThrow(/maxConcurrent is 0/);
+  });
+
+  it("does not reach the manager when rejecting", () => {
+    const mgr = createManagerStub();
+    const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub(), () => 0);
+    expect(() => svc.spawn("Explore", "task")).toThrow();
+    expect(mgr.spawn).not.toHaveBeenCalled();
+  });
+
+  it("allows spawns once the limit is at least 1", () => {
+    const mgr = createManagerStub();
+    const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub(), () => 1);
+    expect(() => svc.spawn("Explore", "quick check")).not.toThrow();
+    expect(mgr.spawn).toHaveBeenCalledOnce();
   });
 });

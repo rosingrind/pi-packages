@@ -223,6 +223,50 @@ describe("AgentTool — background execution", () => {
 		expect(result.content[0].text).toContain("background");
 	});
 
+	describe("serialized foreground-only mode (maxConcurrent = 0)", () => {
+		function makeSerializedDeps() {
+			return createToolDeps({ settings: { defaultMaxTurns: undefined, maxConcurrent: 0 } });
+		}
+
+		it("rejects a background spawn with actionable guidance and does not spawn", async () => {
+			const deps = makeSerializedDeps();
+			const result = await execute(deps, {
+				prompt: "do something",
+				description: "bg task",
+				subagent_type: "general-purpose",
+				run_in_background: true,
+			});
+			const text = result.content[0].text;
+			expect(text).toContain("maxConcurrent is 0");
+			expect(text).toContain("serialized");
+			expect(text).toContain("run_in_background");
+			expect(deps.manager.spawn).not.toHaveBeenCalled();
+		});
+
+		it("still allows foreground execution at maxConcurrent = 0", async () => {
+			const deps = makeSerializedDeps();
+			await execute(deps, {
+				prompt: "do something",
+				description: "fg task",
+				subagent_type: "general-purpose",
+			});
+			expect(deps.manager.spawnAndWait).toHaveBeenCalled();
+		});
+
+		it("swaps the parallel-work guideline for a serialized-mode line in the description", () => {
+			const def = makeTool(makeSerializedDeps()).toToolDefinition();
+			expect(def.description).toContain("Background execution is unavailable");
+			expect(def.description).toContain("maxConcurrent is 0");
+			expect(def.description).not.toContain("use run_in_background: true on each agent");
+		});
+
+		it("keeps the parallel-work guideline at maxConcurrent >= 1", () => {
+			const def = makeTool(createToolDeps()).toToolDefinition();
+			expect(def.description).toContain("use run_in_background: true on each agent");
+			expect(def.description).not.toContain("Background execution is unavailable");
+		});
+	});
+
 	it("passes parentSession.toolCallId to manager.spawn", async () => {
 		const deps = createToolDeps();
 		deps.manager.getRecord = vi.fn().mockReturnValue(createTestSubagent({ status: "running" }));

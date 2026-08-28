@@ -98,13 +98,22 @@ describe("SubagentsSettingsHandler — max concurrency", () => {
     expect(ui.notify).toHaveBeenCalledWith("Max concurrency set to 8", "info");
   });
 
-  it("rejects a value below 1 with a warning and does not apply", async () => {
+  it("accepts 0 (serialized foreground-only mode) and applies it", async () => {
     const { handler, settings } = makeHandler();
     const ui = makeMenuUI(["Max concurrency (current: 4)"]);
     ui.input = vi.fn().mockResolvedValue("0");
     await handler.handle({ ui });
+    expect(settings.applyMaxConcurrent).toHaveBeenCalledWith(0);
+    expect(ui.notify).toHaveBeenCalledWith("Max concurrency set to 8", "info");
+  });
+
+  it("rejects a negative value with a warning and does not apply", async () => {
+    const { handler, settings } = makeHandler();
+    const ui = makeMenuUI(["Max concurrency (current: 4)"]);
+    ui.input = vi.fn().mockResolvedValue("-1");
+    await handler.handle({ ui });
     expect(settings.applyMaxConcurrent).not.toHaveBeenCalled();
-    expect(ui.notify).toHaveBeenCalledWith("Must be a positive integer.", "warning");
+    expect(ui.notify).toHaveBeenCalledWith("Must be 0 or a positive integer.", "warning");
   });
 
   it("does not apply when the input is cancelled", async () => {
@@ -121,7 +130,7 @@ describe("SubagentsSettingsHandler — max concurrency", () => {
     ui.input = vi.fn().mockResolvedValue("abc");
     await handler.handle({ ui });
     expect(settings.applyMaxConcurrent).not.toHaveBeenCalled();
-    expect(ui.notify).toHaveBeenCalledWith("Must be a positive integer.", "warning");
+    expect(ui.notify).toHaveBeenCalledWith("Must be 0 or a positive integer.", "warning");
   });
 });
 

@@ -68,10 +68,10 @@ const SETTINGS: readonly SettingDescriptor[] = [
     kind: "numeric",
     label: "Max concurrency",
     currentDisplay: (settings) => settings.maxConcurrent,
-    inputTitle: "Max concurrent background agents",
+    inputTitle: "Max concurrent background agents (0 = foreground-only)",
     inputDefault: (settings) => String(settings.maxConcurrent),
-    minimum: 1,
-    validationMessage: "Must be a positive integer.",
+    minimum: 0,
+    validationMessage: "Must be 0 or a positive integer.",
     apply: (settings, n) => settings.applyMaxConcurrent(n),
   },
   {

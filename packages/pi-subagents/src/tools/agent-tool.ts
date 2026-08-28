@@ -39,6 +39,11 @@ export type AgentToolSettings = {
 
 // ---- Class ----
 
+/** Rejection text when a background spawn is attempted in serialized mode. */
+const BACKGROUND_DISABLED_ERROR =
+  "Background spawning is unavailable: maxConcurrent is 0 (serialized foreground-only mode — only one request stream may be in flight at a time). " +
+  "Re-run this call without run_in_background to run the agent in the foreground.";
+
 export class AgentTool {
 	private readonly typeListText: string;
 	private readonly availableTypesText: string;
@@ -74,6 +79,12 @@ export class AgentTool {
 			this.settings,
 		);
 		if ("error" in config) return textResult(config.error);
+
+		// ---- Serialized mode: background execution unavailable (maxConcurrent = 0) ----
+		// Checked live so a mid-session /subagents:settings change takes effect immediately.
+		if (config.execution.runInBackground && this.settings.maxConcurrent === 0) {
+			return textResult(BACKGROUND_DISABLED_ERROR);
+		}
 
 		// ---- Boundary extraction (after config so inheritContext is resolved) ----
 		const snapshot = this.runtime.buildSnapshot(config.execution.inheritContext);
@@ -136,15 +147,25 @@ export class AgentTool {
 		const availableTypesText = this.availableTypesText;
 		const agentDir = this.agentDir;
 		const registry = this.registry;
+		// Snapshot at registration time; the execute-time check above enforces the
+		// live value, so a mid-session setting change stays safe even though the
+		// description text only refreshes on the next session.
+		const serializedMode = this.settings.maxConcurrent === 0;
 
 		const guidelines = [
-			"- For parallel work, use run_in_background: true on each agent. Foreground calls run sequentially — only one executes at a time.",
+			serializedMode
+				? "- Background execution is unavailable: maxConcurrent is 0 (serialized foreground-only mode — one request stream at a time). Always omit run_in_background; agents run to completion in the foreground."
+				: "- For parallel work, use run_in_background: true on each agent. Foreground calls run sequentially — only one executes at a time.",
 			...this.agentGuidelines,
 			"- Provide clear, detailed prompts so the agent can work autonomously.",
 			"- Subagent results are returned as text — summarize them for the user.",
-			"- Use run_in_background for work you don't need immediately. You will be notified when it completes.",
+			...(serializedMode
+				? []
+				: [
+						"- Use run_in_background for work you don't need immediately. You will be notified when it completes.",
+						"- Use steer_subagent to send mid-run messages to a running background agent.",
+					]),
 			"- Use resume with an agent ID to continue a previous agent's work.",
-			"- Use steer_subagent to send mid-run messages to a running background agent.",
 			'- Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").',
 			"- Use thinking to control extended thinking level.",
 			"- Use inherit_context if the agent needs the parent conversation history.",

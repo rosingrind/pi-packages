@@ -162,6 +162,9 @@ Individual projects can still override via `/subagents:settings`.
 
 **Failure behavior:** missing file is silent; malformed JSON logs a `[pi-subagents] Ignoring malformed settings at …` warning to stderr; invalid/out-of-range field values are dropped per-field; write failures downgrade the `/subagents:settings` toast to a warning with `(session only; failed to persist)`.
 
+**Serialized foreground-only mode:** setting `maxConcurrent` to `0` disables background agents entirely — the subagent tool rejects `run_in_background` with guidance to re-run in the foreground, and the RPC service rejects every spawn because its contract returns immediately and cannot serialize an agent against the main session.
+The mode targets providers that allow only one in-flight request: a single stream rules out the parent–child request collisions that surface as `429 concurrency_limit_exceeded`.
+
 ### Excluding package extensions from children
 
 Some package extensions are parent-scoped or expensive to initialize per session.
