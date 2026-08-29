@@ -47,8 +47,25 @@ export interface NavigableSubagent {
  * the retention sweep, but the record and its transcript pointer survive).
  */
 export type NavigationEntry =
-  | { readonly kind: "live"; readonly label: string; readonly record: NavigableSubagent }
+  | {
+      readonly kind: "live";
+      readonly label: string;
+      readonly record: NavigableSubagent;
+      /** Live footer stats — model, context percent, compactions — when the record carries them. */
+      readonly stats?: () => string | undefined;
+    }
   | { readonly kind: "snapshot"; readonly label: string; readonly outputFile: string };
+
+/**
+ * Rich fields the manager's records additionally carry at runtime (a `Subagent`
+ * satisfies `NavigableSubagent` structurally, hiding these). Optional so plain
+ * fixtures satisfy the type without them; stats render only when present.
+ */
+export interface LiveStatsFields {
+  invocation?: { modelName?: string };
+  subagentSession?: { getContextPercent(): number | null };
+  compactionCount?: number;
+}
 
 /** The fields `buildLabel` reads — shared by the live and snapshot (released-session) label paths. */
 interface LabelFields {
@@ -89,19 +106,33 @@ export interface TranscriptSource {
  * disk (`snapshot`). Records with neither are not navigable. Live entries first.
  */
 export function listNavigableAgents(
-  agents: readonly NavigableSubagent[],
+  agents: readonly (NavigableSubagent & LiveStatsFields)[],
   registry: AgentConfigLookup,
 ): NavigationEntry[] {
   const live: NavigationEntry[] = [];
   const snapshots: NavigationEntry[] = [];
   for (const record of agents) {
     if (record.isSessionReady()) {
-      live.push({ kind: "live", record, label: buildLabel(record, registry) });
+      live.push({ kind: "live", record, label: buildLabel(record, registry), stats: liveStats(record) });
     } else if (record.outputFile) {
       snapshots.push({ kind: "snapshot", outputFile: record.outputFile, label: buildLabel(record, registry, true) });
     }
   }
   return [...live, ...snapshots];
+}
+
+/** Build the footer stats line for a record exposing the rich fields; undefined when it does not. */
+function liveStats(record: NavigableSubagent & LiveStatsFields): (() => string) | undefined {
+  if (record.compactionCount === undefined && record.invocation === undefined && record.subagentSession === undefined)
+    return undefined;
+  return () => {
+    const parts: string[] = [record.invocation?.modelName ?? "parent model"];
+    const pct = record.subagentSession?.getContextPercent();
+    if (pct != null) parts.push(`${pct}% ctx`);
+    const compactions = record.compactionCount ?? 0;
+    if (compactions > 0) parts.push(`${compactions} compaction${compactions === 1 ? "" : "s"}`);
+    return parts.join(" · ");
+  };
 }
 
 /**

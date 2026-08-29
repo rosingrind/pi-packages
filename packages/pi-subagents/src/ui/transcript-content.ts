@@ -23,8 +23,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Container, type MarkdownTheme, Spacer, type TUI } from "@earendil-works/pi-tui";
 import type { AgentSessionEvent, SessionMessage } from "#src/types";
-import { describeActivity } from "#src/ui/display";
-import { GLYPHS } from "#src/ui/glyphs";
 import { sanitizeRow } from "#src/ui/row-sanitizer";
 import type { TranscriptSource } from "#src/ui/session-navigation";
 
@@ -36,6 +34,10 @@ export interface TranscriptContentOptions {
   cwd: string;
   markdownTheme: MarkdownTheme;
   source: TranscriptSource;
+  /** Initial tool-output presentation; pi's chat default is collapsed. */
+  toolOutputExpanded?: boolean;
+  /** Hide assistant thinking blocks, mirroring pi's chat setting. */
+  hideThinkingBlock?: boolean;
 }
 
 /**
@@ -78,10 +80,13 @@ export class TranscriptContent {
   private inFlight: AssistantMessageComponent | undefined;
   /** Width `inFlightRows` was rendered at. */
   private inFlightWidth: number | undefined;
+  /** Current tool-output presentation; toggled at the overlay level. */
+  private toolOutputExpanded: boolean;
   private inFlightRows: readonly string[] | undefined;
 
   constructor(options: TranscriptContentOptions) {
     this.options = options;
+    this.toolOutputExpanded = options.toolOutputExpanded ?? false;
     this.consumeSettled();
   }
 
@@ -135,6 +140,20 @@ export class TranscriptContent {
     this.inFlightRows = undefined;
   }
 
+  /**
+   * Expand or collapse every tool execution's output, mirroring pi's Ctrl+O.
+   * Touches settled and in-flight tool components and drops the row caches, so
+   * the next paint re-renders at the new presentation.
+   */
+  setToolOutputExpanded(expanded: boolean): void {
+    this.toolOutputExpanded = expanded;
+    for (const block of this.blocks) {
+      for (const tool of block.tools) tool.setExpanded(expanded);
+      block.rows = undefined;
+    }
+    this.settledRows = undefined;
+  }
+
   // ---- Private ----
 
   /** Settled rows at `width`; each block renders once per width and content change. */
@@ -154,15 +173,9 @@ export class TranscriptContent {
     return rows;
   }
 
-  /** Rows below settled history: the in-flight message, then the activity row. */
+  /** Rows below settled history: the in-flight message, if any. */
   private tail(width: number): readonly string[] {
-    const rows = [...this.inFlightRendered(width)];
-    const streaming = this.options.source.streaming();
-    if (streaming) {
-      const activity = `${GLYPHS.streaming} ${describeActivity(streaming.activeTools, streaming.responseText)}`;
-      rows.push("", sanitizeRow(activity, width));
-    }
-    return rows;
+    return [...this.inFlightRendered(width)];
   }
 
   /** The in-flight message's rows, re-rendered independently of settled history. */
@@ -178,7 +191,12 @@ export class TranscriptContent {
 
   private updateInFlight(message: AssistantSessionMessage): void {
     if (this.inFlight) this.inFlight.updateContent(message);
-    else this.inFlight = new AssistantMessageComponent(message, false, this.options.markdownTheme);
+    else
+      this.inFlight = new AssistantMessageComponent(
+        message,
+        this.options.hideThinkingBlock ?? false,
+        this.options.markdownTheme,
+      );
     this.inFlightRows = undefined;
   }
 
@@ -249,7 +267,9 @@ export class TranscriptContent {
 
   private consumeAssistant(message: AssistantSessionMessage): void {
     const block = this.appendBlock();
-    block.container.addChild(new AssistantMessageComponent(message, false, this.options.markdownTheme));
+    block.container.addChild(
+      new AssistantMessageComponent(message, this.options.hideThinkingBlock ?? false, this.options.markdownTheme),
+    );
     for (const content of message.content) {
       if (content.type !== "toolCall") continue;
       const tool = new ToolExecutionComponent(
@@ -261,8 +281,9 @@ export class TranscriptContent {
         this.options.tui,
         this.options.cwd,
       );
-      tool.setExpanded(true);
+      tool.setExpanded(this.toolOutputExpanded);
       block.container.addChild(tool);
+      block.tools.push(tool);
       this.pendingTools.set(content.id, { component: tool, block });
     }
     this.hasVisibleContent = true;
@@ -305,7 +326,7 @@ export class TranscriptContent {
   }
 
   private appendBlock(): SettledBlock {
-    const block: SettledBlock = { container: new Container(), rows: undefined };
+    const block: SettledBlock = { container: new Container(), tools: [], rows: undefined };
     this.blocks.push(block);
     return block;
   }
@@ -314,6 +335,8 @@ export class TranscriptContent {
 /** One settled message's components plus its rows at the current width. */
 interface SettledBlock {
   readonly container: Container;
+  /** Tool-execution components in this block, for presentation toggles. */
+  readonly tools: ToolExecutionComponent[];
   rows: readonly string[] | undefined;
 }
 

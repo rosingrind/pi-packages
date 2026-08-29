@@ -83,6 +83,12 @@ export interface TranscriptOverlayOptions {
   done: (result: undefined) => void;
   cwd: string;
   markdownTheme: MarkdownTheme;
+  /** Live status suffix for the footer — model, context, compactions. */
+  headerStats?: () => string | undefined;
+  /** Initial tool-output presentation; pi's chat default is collapsed. */
+  toolOutputExpanded?: boolean;
+  /** Hide assistant thinking blocks, mirroring pi's chat setting. */
+  hideThinkingBlock?: boolean;
 }
 
 /**
@@ -118,9 +124,18 @@ export class SessionNavigatorHandler {
         return;
       }
       const markdownTheme = getMarkdownTheme();
+      // Snapshot entries carry no live record, so their entries expose no stats.
       await ui.custom<undefined>(
         (tui, theme, _keybindings, done) =>
-          new TranscriptOverlay({ tui, theme, source, done, cwd, markdownTheme }),
+          new TranscriptOverlay({
+            tui,
+            theme,
+            source,
+            done,
+            cwd,
+            markdownTheme,
+            headerStats: entry.kind === "live" ? entry.stats : undefined,
+          }),
         {
           overlay: true,
           overlayOptions: {
@@ -154,14 +169,37 @@ export class TranscriptOverlay implements Component {
   private readonly theme: Theme;
   private readonly done: (result: undefined) => void;
   private readonly content: TranscriptContent;
+  /** Live status suffix for the footer — model, context, compactions. */
+  private readonly headerStats: (() => string | undefined) | undefined;
+  /** Current tool-output presentation, toggled with Ctrl+O like pi's chat. */
+  private toolOutputExpanded: boolean;
   /** Inner width the compositor last rendered at; input must use the same layout. */
   private renderedInnerWidth: number | undefined;
 
-  constructor({ tui, theme, source, done, cwd, markdownTheme }: TranscriptOverlayOptions) {
+  constructor({
+    tui,
+    theme,
+    source,
+    done,
+    cwd,
+    markdownTheme,
+    headerStats,
+    toolOutputExpanded,
+    hideThinkingBlock,
+  }: TranscriptOverlayOptions) {
     this.tui = tui;
     this.theme = theme;
     this.done = done;
-    this.content = new TranscriptContent({ tui, cwd, markdownTheme, source });
+    this.headerStats = headerStats;
+    this.toolOutputExpanded = toolOutputExpanded ?? false;
+    this.content = new TranscriptContent({
+      tui,
+      cwd,
+      markdownTheme,
+      source,
+      toolOutputExpanded: this.toolOutputExpanded,
+      hideThinkingBlock: hideThinkingBlock ?? false,
+    });
     this.unsubscribe = source.subscribe((event) => {
       if (this.closed) return;
       this.content.apply(event);
@@ -173,6 +211,13 @@ export class TranscriptOverlay implements Component {
     if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.closed = true;
       this.done(undefined);
+      return;
+    }
+
+    if (matchesKey(data, "ctrl+o")) {
+      this.toolOutputExpanded = !this.toolOutputExpanded;
+      this.content.setToolOutputExpanded(this.toolOutputExpanded);
+      this.tui.requestRender();
       return;
     }
 
@@ -216,8 +261,6 @@ export class TranscriptOverlay implements Component {
     const hrMid = row(th.fg("dim", "─".repeat(innerW)));
 
     lines.push(hrTop);
-    lines.push(row(th.bold("Subagent session")));
-    lines.push(hrMid);
 
     const totalLines = this.content.lineCount(innerW);
     const viewportHeight = this.viewportHeight();
@@ -232,7 +275,8 @@ export class TranscriptOverlay implements Component {
       totalLines <= viewportHeight
         ? "100%"
         : `${Math.round(((visibleStart + viewportHeight) / totalLines) * 100)}%`;
-    const footerLeft = th.fg("dim", `${totalLines} lines · ${scrollPct}`);
+    const stats = this.headerStats?.();
+    const footerLeft = th.fg("dim", `${totalLines} lines · ${scrollPct}` + (stats ? ` · ${stats}` : ""));
     const footerRight = th.fg("dim", "↑↓ scroll · PgUp/PgDn · Esc close");
     const footerGap = Math.max(1, innerW - visibleWidth(footerLeft) - visibleWidth(footerRight));
     lines.push(row(footerLeft + " ".repeat(footerGap) + footerRight));

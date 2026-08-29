@@ -12,12 +12,16 @@ beforeAll(() => initTheme(undefined, false));
 
 const WIDTH = 76;
 
-function makeContent(source: TranscriptSource = fakeSource()): TranscriptContent {
+function makeContent(
+  source: TranscriptSource = fakeSource(),
+  options: Partial<{ toolOutputExpanded: boolean; hideThinkingBlock: boolean }> = {},
+): TranscriptContent {
   return new TranscriptContent({
     tui: mockTui(),
     cwd: "/test/cwd",
     markdownTheme: getMarkdownTheme(),
     source,
+    ...options,
   });
 }
 
@@ -46,7 +50,7 @@ describe("TranscriptContent", () => {
       expect(rendered(makeContent())).toContain("Hello world");
     });
 
-    it("renders a tool call and its result through Pi's tool-execution component", () => {
+  	it("renders a tool call collapsed, hiding its result until expanded", () => {
       const messages = [
         {
           role: "assistant",
@@ -62,10 +66,16 @@ describe("TranscriptContent", () => {
         },
       ] as unknown as SessionMessage[];
 
-      const out = rendered(contentFrom(messages));
+      const content = contentFrom(messages);
 
-      expect(out).toContain("read");
-      expect(out).toContain("file body");
+      expect(rendered(content)).toContain("read");
+      expect(rendered(content)).not.toContain("file body");
+
+      content.setToolOutputExpanded(true);
+      expect(rendered(content)).toContain("file body");
+
+      content.setToolOutputExpanded(false);
+      expect(rendered(content)).not.toContain("file body");
     });
 
     it("renders a skill invocation and the user message that follows it", () => {
@@ -140,16 +150,38 @@ describe("TranscriptContent", () => {
   });
 
   describe("live tail", () => {
-    it("appends the streaming-activity row while the agent is running", () => {
+    it("never renders a streaming-activity row — the widget owns activity display", () => {
       const source = fakeSource({
         streaming: () => ({ activeTools: new Map([["k", "read"]]), responseText: "" }),
       });
 
-      expect(rendered(makeContent(source))).toContain("◍");
+      expect(rendered(makeContent(source))).not.toContain("◍");
+    });
+  });
+
+  describe("output and thinking presentation", () => {
+    const thinkingMessages = [
+      {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "secret thoughts" },
+          { type: "text", text: "visible answer" },
+        ],
+        stopReason: "endTurn",
+      },
+    ] as unknown as SessionMessage[];
+
+    it("shows thinking content by default, matching pi's chat", () => {
+      expect(rendered(contentFrom(thinkingMessages))).toContain("secret thoughts");
     });
 
-    it("omits the streaming-activity row when the agent is not running", () => {
-      expect(rendered(makeContent())).not.toContain("◍");
+    it("hides thinking content when hideThinkingBlock is set", () => {
+      const content = makeContent(fakeSource({ getMessages: () => thinkingMessages }), {
+        hideThinkingBlock: true,
+      });
+
+      expect(rendered(content)).toContain("visible answer");
+      expect(rendered(content)).not.toContain("secret thoughts");
     });
   });
 
@@ -243,7 +275,7 @@ describe("TranscriptContent", () => {
       expect(out.match(/settling answer/g)).toHaveLength(1);
     });
 
-    it("keeps the activity row below the in-flight message", () => {
+    it("ends with the in-flight message — no activity row (the widget owns activity)", () => {
       const source = fakeSource({
         getMessages: () => manyMessages(2),
         streaming: () => ({ activeTools: new Map(), responseText: "partial answer" }),
@@ -253,9 +285,9 @@ describe("TranscriptContent", () => {
 
       const rows = allRows(content);
 
-      expect(rows.findIndex((row) => row.includes("partial answer"))).toBeLessThan(
-        rows.findIndex((row) => row.includes("◍")),
-      );
+      expect(rows.some((row) => row.includes("◍"))).toBe(false);
+      const lastNonEmpty = [...rows].reverse().find((row) => visibleWidth(row) > 0);
+      expect(lastNonEmpty).toContain("partial answer");
     });
   });
 
@@ -328,7 +360,7 @@ describe("TranscriptContent", () => {
       expect(content.slice(WIDTH, total - 1, 10)).toEqual(allRows(content).slice(total - 1));
     });
 
-    it("includes the live activity row in the last window", () => {
+    it("ends the last window with transcript content — no activity row", () => {
       const source = fakeSource({
         getMessages: () => manyMessages(3),
         streaming: () => ({ activeTools: new Map([["k", "read"]]), responseText: "" }),
@@ -336,7 +368,7 @@ describe("TranscriptContent", () => {
       const content = makeContent(source);
       const total = content.lineCount(WIDTH);
 
-      expect(content.slice(WIDTH, total - 2, 2).join("\n")).toContain("◍");
+      expect(content.slice(WIDTH, Math.max(0, total - 2), 2).join("\n")).not.toContain("◍");
     });
   });
 
@@ -379,7 +411,7 @@ describe("TranscriptContent", () => {
 
     it("re-renders only the affected block when a tool result lands", () => {
       const history: SessionMessage[] = [...manyMessages(20), toolCallMessage("tc-1")];
-      const content = makeContent(growingSource(history));
+      const content = makeContent(growingSource(history), { toolOutputExpanded: true });
       content.apply(settled());
       allRows(content);
       history.push(toolResultMessage("tc-1", "tool output body"));

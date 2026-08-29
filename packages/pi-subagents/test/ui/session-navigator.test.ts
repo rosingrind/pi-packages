@@ -21,7 +21,16 @@ function ansiTheme() {
   };
 }
 
-function makeOverlay(opts: { source?: TranscriptSource; done?: (r: undefined) => void; tui?: TUI } = {}) {
+function makeOverlay(
+  opts: {
+    source?: TranscriptSource;
+    done?: (r: undefined) => void;
+    tui?: TUI;
+    headerStats?: () => string | undefined;
+    toolOutputExpanded?: boolean;
+    hideThinkingBlock?: boolean;
+  } = {},
+) {
   return new TranscriptOverlay({
     tui: opts.tui ?? mockTui(),
     theme: ansiTheme(),
@@ -29,6 +38,9 @@ function makeOverlay(opts: { source?: TranscriptSource; done?: (r: undefined) =>
     done: opts.done ?? vi.fn(),
     cwd: "/test/cwd",
     markdownTheme: getMarkdownTheme(),
+    headerStats: opts.headerStats,
+    toolOutputExpanded: opts.toolOutputExpanded,
+    hideThinkingBlock: opts.hideThinkingBlock,
   });
 }
 
@@ -59,13 +71,15 @@ describe("full-size overlay geometry", () => {
 
   it("fills the compositor's available height with the transcript viewport", () => {
     // 40 rows - top 2 - bottom 6 = 32 available; the overlay paints all of it.
+    // Chrome lost its title row and separator (2 lines), so all 32 go to content.
     const overlay = makeOverlay({ tui: mockTui(40, 80) });
-    expect(overlay.render(74)).toHaveLength(32);
+    expect(overlay.render(74)).toHaveLength(32 - 2);
   });
 
   it("keeps a minimum viewport on tiny terminals", () => {
     const overlay = makeOverlay({ tui: mockTui(10, 40) });
-    expect(overlay.render(34).length).toBeGreaterThanOrEqual(9);
+    // 3 content rows + hrTop + footer separator + footer + bottom border.
+    expect(overlay.render(34).length).toBeGreaterThanOrEqual(7);
   });
 });
 
@@ -112,6 +126,49 @@ describe("TranscriptOverlay", () => {
     }
   });
 
+  it("omits the title row and its separator — they cost two content lines", () => {
+    const lines = makeOverlay().render(80);
+    expect(lines.some((l) => l.includes("Subagent session"))).toBe(false);
+    // hrTop + viewport rows + footer separator + footer + bottom border: the
+    // rows below the top border are transcript content, not chrome. The leading
+    // row(s) may pad, so scan the first few.
+    expect(lines.slice(1, 4).some((l) => l.includes("Hello world"))).toBe(true);
+  });
+
+  it("carries the live model and context stats in the footer", () => {
+    const lines = makeOverlay({ headerStats: () => "glm-5.3-flash · 12%" }).render(80);
+    expect(lines.some((l) => l.includes("glm-5.3-flash · 12%"))).toBe(true);
+  });
+
+  it("does not render a stats section when the source has none", () => {
+    const lines = makeOverlay({ headerStats: () => undefined }).render(80);
+    expect(lines.some((l) => l.includes("lines ·"))).toBe(true);
+  });
+
+  it("ctrl+o toggles tool output expansion", () => {
+    const messages = [
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "tc-1", name: "read", arguments: { path: "/x.ts" } }],
+        stopReason: "toolUse",
+      },
+      {
+        role: "toolResult",
+        toolCallId: "tc-1",
+        toolName: "read",
+        content: [{ type: "text", text: "file body" }],
+        isError: false,
+      },
+    ] as unknown as SessionMessage[];
+    const overlay = makeOverlay({ source: fakeSource({ getMessages: () => messages }) });
+
+    expect(overlay.render(80).some((l) => l.includes("file body"))).toBe(false);
+    overlay.handleInput("\x0f");
+    expect(overlay.render(80).some((l) => l.includes("file body"))).toBe(true);
+    overlay.handleInput("\x0f");
+    expect(overlay.render(80).some((l) => l.includes("file body"))).toBe(false);
+  });
+
   it("subscribes on construction and requests a render on change", () => {
     const tui = mockTui();
     let captured: (() => void) | undefined;
@@ -155,12 +212,12 @@ describe("TranscriptOverlay", () => {
     expect(tui.requestRender).not.toHaveBeenCalled();
   });
 
-  it("appends the streaming-activity indicator while running", () => {
+  it("never renders a streaming-activity indicator — the widget owns activity display", () => {
     const source = fakeSource({
       streaming: () => ({ activeTools: new Map([["k", "read"]]), responseText: "" }),
     });
     const out = makeOverlay({ source }).render(80).join("\n");
-    expect(out).toContain("◍");
+    expect(out).not.toContain("◍");
   });
 
   describe("scroll bounds", () => {
